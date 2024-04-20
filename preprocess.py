@@ -39,7 +39,7 @@ if __name__ == '__main__':
         os.makedirs(dist_dir, exist_ok=True)
 
     # read .off files
-    off_files = sorted(glob(os.path.join(data_root, 'off', '*.off')))
+    off_files = sorted(glob(os.path.join(data_root, 'off', '*.ply')))
     assert len(off_files) != 0
 
     for off_file in tqdm(off_files):
@@ -67,4 +67,4 @@ if __name__ == '__main__':
             # compute distance matrix
             dist_mat = compute_geodesic_distmat(verts, faces)
             # save results
-            sio.savemat(os.path.join(dist_dir, filename.replace('.off', '.mat')), {'dist': dist_mat})
+            sio.savemat(os.path.join(dist_dir, filename.replace('.ply', '.mat')), {'dist': dist_mat})

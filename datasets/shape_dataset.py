@@ -11,6 +11,9 @@ from utils.shape_util import read_shape
 from utils.geometry_util import get_operators
 from utils.registry import DATASET_REGISTRY
 
+from pathlib import Path
+import potpourri3d as pp3d
+
 
 def sort_list(l):
     try:
@@ -24,7 +27,7 @@ def get_spectral_ops(item, num_evecs, cache_dir=None):
         os.makedirs(cache_dir)
     _, mass, L, evals, evecs, _, _ = get_operators(item['verts'], item.get('faces'),
                                                    k=num_evecs,
-                                                   cache_dir=cache_dir)
+                                                   cache_dir=cache_dir)  #在不同的阶段读取不同的东西
     evecs_trans = evecs.T * mass[None]
     item['evecs'] = evecs[:, :num_evecs]
     item['evecs_trans'] = evecs_trans[:num_evecs]
@@ -39,7 +42,7 @@ class SingleShapeDataset(Dataset):
     def __init__(self,
                  data_root, return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=False, return_dist=False, return_dino=True):
         """
         Single Shape Dataset
 
@@ -60,9 +63,11 @@ class SingleShapeDataset(Dataset):
         self.return_evecs = return_evecs
         self.return_corr = return_corr
         self.return_dist = return_dist
+        self.return_dino = return_dino
         self.num_evecs = num_evecs
 
         self.off_files = []
+        self.dino_feature_file = [] if self.return_dino else None
         self.corr_files = [] if self.return_corr else None
         self.dist_files = [] if self.return_dist else None
 
@@ -71,6 +76,8 @@ class SingleShapeDataset(Dataset):
         # sanity check
         self._size = len(self.off_files)
         assert self._size != 0
+        if self.return_dino:
+            assert self._size == len(self.dino_feature_file)
 
         if self.return_dist:
             assert self._size == len(self.dist_files)
@@ -82,7 +89,14 @@ class SingleShapeDataset(Dataset):
         # check the data path contains .off files
         off_path = os.path.join(self.data_root, 'off')
         assert os.path.isdir(off_path), f'Invalid path {off_path} not containing .off files'
-        self.off_files = sort_list(glob(f'{off_path}/*.off'))
+        # self.off_files = sort_list(glob(f'{off_path}/*.off'))
+        self.off_files = sort_list(glob(f'{off_path}/*.ply'))
+
+        if self.return_dino:
+            dino_feature_path = os.path.join(self.data_root, 'dino_feat')
+            assert os.path.isdir(dino_feature_path), f'Invalid path {dino_feature_path} not containing .npy files'
+            self.dino_feature_file = sorted([os.path.join(dino_feature_path, f) for f in os.listdir(dino_feature_path) if f.endswith('.npy')],
+                                 key=lambda x: int(Path(x).stem.split('_')[-1]))
 
         # check the data path contains .vts files
         if self.return_corr:
@@ -105,14 +119,19 @@ class SingleShapeDataset(Dataset):
         item['name'] = basename
 
         # get vertices and faces
-        verts, faces = read_shape(off_file)
-        item['verts'] = torch.from_numpy(verts).float()
+        # verts, faces = read_shape(off_file)
+        verts, faces = pp3d.read_mesh(off_file)
+        item['verts'] = torch.from_numpy(np.ascontiguousarray(verts)).float()
         if self.return_faces:
-            item['faces'] = torch.from_numpy(faces).long()
+            item['faces'] = torch.from_numpy(np.ascontiguousarray(faces)).long()
 
         # get eigenfunctions/eigenvalues
         if self.return_evecs:
             item = get_spectral_ops(item, num_evecs=self.num_evecs, cache_dir=os.path.join(self.data_root, 'diffusion'))
+
+        if self.return_dino:
+            feature = np.load(self.dino_feature_file[index])
+            item['dino_feat'] = torch.from_numpy(feature).float()
 
         # get geodesic distance matrix
         if self.return_dist:
@@ -121,8 +140,10 @@ class SingleShapeDataset(Dataset):
 
         # get correspondences
         if self.return_corr:
-            corr = np.loadtxt(self.corr_files[index], dtype=np.int32) - 1  # minus 1 to start from 0
-            item['corr'] = torch.from_numpy(corr).long()
+            pass
+            # corr = np.loadtxt(self.corr_files[index], dtype=np.int32) - 1  # minus 1 to start from 0
+        corr = np.arange(verts.shape[0])
+        item['corr'] = torch.from_numpy(corr).long()
 
         return item
 
@@ -148,6 +169,8 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.corr_files = self.corr_files[:80]
             if self.dist_files:
                 self.dist_files = self.dist_files[:80]
+            if self.dino_feature_file:
+                self.dino_feature_file = self.dino_feature_file[:80]
             self._size = 80
         elif phase == 'test':
             if self.off_files:
@@ -156,6 +179,8 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.corr_files = self.corr_files[80:]
             if self.dist_files:
                 self.dist_files = self.dist_files[80:]
+            if self.dino_feature_file:
+                self.dino_feature_file = self.dino_feature_file[80:]
             self._size = 20
 
 

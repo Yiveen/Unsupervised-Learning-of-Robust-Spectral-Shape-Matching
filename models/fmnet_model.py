@@ -33,17 +33,26 @@ class FMNetModel(BaseModel):
         evecs_trans_x = data_x['evecs_trans']  # [B, K, Nx]
         evecs_trans_y = data_y['evecs_trans']  # [B, K, Ny]
 
+        dino_basis_x = data_x['dino_feat']
+        dino_basis_y = data_y['dino_feat']
+
+        dino_trans_x = dino_basis_x.transpose(2,1)
+        dino_trans_y = dino_basis_y.transpose(2,1)
+
         Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, evals_x, evals_y, evecs_trans_x, evecs_trans_y)
+        # Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, evals_x, evals_y, dino_trans_x, dino_trans_y)
 
         self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, evals_x, evals_y)
         Pxy, Pyx = self.compute_permutation_matrix(feat_x, feat_y, bidirectional=True)
 
         # compute C
         Cxy_est = torch.bmm(evecs_trans_y, torch.bmm(Pyx, evecs_x))
+        # Cxy_est = torch.bmm(dino_trans_y, torch.bmm(Pyx, dino_basis_x))
 
         self.loss_metrics['l_align'] = self.losses['align_loss'](Cxy, Cxy_est)
         if not self.partial:
             Cyx_est = torch.bmm(evecs_trans_x, torch.bmm(Pxy, evecs_y))
+            # Cyx_est = torch.bmm(dino_trans_x, torch.bmm(Pyx, dino_basis_y))
             self.loss_metrics['l_align'] += self.losses['align_loss'](Cyx, Cyx_est)
 
         if 'dirichlet_loss' in self.losses:

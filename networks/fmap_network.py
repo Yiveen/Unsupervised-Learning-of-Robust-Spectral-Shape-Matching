@@ -32,22 +32,52 @@ class RegularizedFMNet(nn.Module):
         self.bidirectional = bidirectional
 
     def compute_functional_map(self, feat_x, feat_y, evals_x, evals_y, evecs_trans_x, evecs_trans_y):
-        A = torch.bmm(evecs_trans_x, feat_x)  # [B, K, C]
+        A = torch.bmm(evecs_trans_x, feat_x)  # [B, K, C] [1,200,256]
         B = torch.bmm(evecs_trans_y, feat_y)  # [B, K, C]
 
-        D = get_mask(evals_x, evals_y, self.resolvant_gamma)  # [B, K, K]
+        D = get_mask(evals_x, evals_y, self.resolvant_gamma)  # [B, K, K] [1, 200, 200]
 
-        A_t = A.transpose(1, 2)  # [B, C, K]
+        A_t = A.transpose(1, 2)  # [B, C, K] [1,256,200]
         A_A_t = torch.bmm(A, A_t)  # [B, K, K]
         B_A_t = torch.bmm(B, A_t)  # [B, K, K]
 
         C_i = []
         for i in range(evals_x.shape[1]):
-            D_i = torch.cat([torch.diag(D[bs, i, :].flatten()).unsqueeze(0) for bs in range(evals_x.shape[0])], dim=0)
-            C = torch.bmm(torch.inverse(A_A_t + self.lmbda * D_i), B_A_t[:, [i], :].transpose(1, 2))
+            D_i = torch.cat([torch.diag(D[bs, i, :].flatten()).unsqueeze(0) for bs in range(evals_x.shape[0])], dim=0) # [1, 200, 200]
+            C = torch.bmm(torch.inverse(A_A_t + self.lmbda * D_i), B_A_t[:, [i], :].transpose(1, 2)) #[1,200,1]
             C_i.append(C.transpose(1, 2))
 
-        Cxy = torch.cat(C_i, dim=1)
+        Cxy = torch.cat(C_i, dim=1) #[1,200,200]
+        return Cxy
+
+    def compute_functional_map_no_values(self, feat_x, feat_y, evals_x, evals_y, evecs_trans_x, evecs_trans_y):
+        A = torch.bmm(evecs_trans_x, feat_x)  # [B, K, C] [1,200,256]
+        B = torch.bmm(evecs_trans_y, feat_y)  # [B, K, C]
+
+        A_t = A.transpose(1, 2)  # [B, C, K] [1,256,200]
+        A_A_t = torch.bmm(A, A_t)  # [B, K, K]
+        B_A_t = torch.bmm(B, A_t)  # [B, K, K]
+
+        C = torch.bmm(torch.inverse(A_A_t), B_A_t.transpose(1, 2)) #[1,200,1]
+        Cxy = C
+
+        return Cxy
+
+    def compute_functional_map_with_I(self, feat_x, feat_y, evals_x, evals_y, evecs_trans_x, evecs_trans_y):
+        A = torch.bmm(evecs_trans_x, feat_x)  # [B, K, C]
+        B = torch.bmm(evecs_trans_y, feat_y)  # [B, K, C]
+
+        A_t = A.transpose(1, 2)  # [B, C, K]
+        A_A_t = torch.bmm(A, A_t)  # [B, K, K]
+
+        # 添加 \lambda I 到 A_A_t 的对角线
+        I = torch.eye(A_A_t.size(1), device=A_A_t.device, dtype=A_A_t.dtype)  # 创建一个单位矩阵
+        A_A_t_reg = A_A_t + self.lmbda * I  # 正则化的 A_A_t
+
+        B_A_t = torch.bmm(B, A_t)  # [B, K, K]
+
+        C = torch.bmm(torch.inverse(A_A_t_reg), B_A_t.transpose(1, 2))  # [1,200,1]
+        Cxy = C
         return Cxy
 
     def forward(self, feat_x, feat_y, evals_x, evals_y, evecs_trans_x, evecs_trans_y):
