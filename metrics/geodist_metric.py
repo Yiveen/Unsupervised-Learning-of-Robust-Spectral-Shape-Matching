@@ -17,7 +17,7 @@ def calculate_geodesic_error(dist_x, corr_x, corr_y, p2p, return_mean=True):
     Returns:
         avg_geodesic_error (np.ndarray): Average geodesic error.
     """
-    ind21 = np.stack([corr_x, p2p[corr_y]], axis=-1)
+    ind21 = np.stack([corr_x, p2p[corr_y]], axis=-1) # 相对于base shape的索引，但是有点忘记了corres_x 是x的索引还是base的索引了
     ind21 = np.ravel_multi_index(ind21.T, dims=[dist_x.shape[0], dist_x.shape[0]])
     geo_err = np.take(dist_x, ind21)
     if return_mean:

@@ -25,9 +25,9 @@ def sort_list(l):
 def get_spectral_ops(item, num_evecs, cache_dir=None):
     if not os.path.isdir(cache_dir):
         os.makedirs(cache_dir)
-    _, mass, L, evals, evecs, _, _ = get_operators(item['verts'], item.get('faces'),
+    _, mass, L, evals, evecs, _, _ = get_operators(item['verts'], None,
                                                    k=num_evecs,
-                                                   cache_dir=cache_dir)  #在不同的阶段读取不同的东西
+                                                   cache_dir=cache_dir)  # 在不同的阶段读取不同的东西
     evecs_trans = evecs.T * mass[None]
     item['evecs'] = evecs[:, :num_evecs]
     item['evecs_trans'] = evecs_trans[:num_evecs]
@@ -40,9 +40,9 @@ def get_spectral_ops(item, num_evecs, cache_dir=None):
 
 class SingleShapeDataset(Dataset):
     def __init__(self,
-                 data_root, return_faces=True,
+                 data_root, return_faces=False,
                  return_evecs=True, num_evecs=200,
-                 return_corr=False, return_dist=False, return_dino=True):
+                 return_corr=False, return_dist=False, return_dino=False, return_gl=True):
         """
         Single Shape Dataset
 
@@ -64,10 +64,14 @@ class SingleShapeDataset(Dataset):
         self.return_corr = return_corr
         self.return_dist = return_dist
         self.return_dino = return_dino
+        self.return_gl = return_gl
         self.num_evecs = num_evecs
 
         self.off_files = []
         self.dino_feature_file = [] if self.return_dino else None
+        self.gl_feature_file = [] if self.return_gl else None
+        self.dino_evals_file = [] if self.return_dino else None
+        self.gl_evals_file = [] if self.return_gl else None
         self.corr_files = [] if self.return_corr else None
         self.dist_files = [] if self.return_dist else None
 
@@ -78,6 +82,8 @@ class SingleShapeDataset(Dataset):
         assert self._size != 0
         if self.return_dino:
             assert self._size == len(self.dino_feature_file)
+        if self.return_gl:
+            assert self._size == len(self.gl_feature_file)
 
         if self.return_dist:
             assert self._size == len(self.dist_files)
@@ -93,10 +99,28 @@ class SingleShapeDataset(Dataset):
         self.off_files = sort_list(glob(f'{off_path}/*.ply'))
 
         if self.return_dino:
-            dino_feature_path = os.path.join(self.data_root, 'dino_feat')
+            dino_feature_path = os.path.join(self.data_root, 'pca_20/pca_features')
             assert os.path.isdir(dino_feature_path), f'Invalid path {dino_feature_path} not containing .npy files'
-            self.dino_feature_file = sorted([os.path.join(dino_feature_path, f) for f in os.listdir(dino_feature_path) if f.endswith('.npy')],
-                                 key=lambda x: int(Path(x).stem.split('_')[-1]))
+            self.dino_feature_file = sorted(
+                [os.path.join(dino_feature_path, f) for f in os.listdir(dino_feature_path) if f.endswith('.npy')],
+                key=lambda x: int(Path(x).stem.split('_')[-1]))
+
+            dino_evals_path = os.path.join(self.data_root, 'pca_20/pca_evals')
+            self.dino_evals_file = sorted(
+                [os.path.join(dino_evals_path, f) for f in os.listdir(dino_evals_path) if f.endswith('.npy')],
+                key=lambda x: int(Path(x).stem.split('_')[-1]))
+
+        if self.return_gl:
+            gl_feature_path = os.path.join(self.data_root, 'graph/graphs_evecs')
+            assert os.path.isdir(gl_feature_path), f'Invalid path {gl_feature_path} not containing .npy files'
+            self.gl_feature_file = sorted(
+                [os.path.join(gl_feature_path, f) for f in os.listdir(gl_feature_path) if f.endswith('.npy')],
+                key=lambda x: int(Path(x).stem.split('_')[-1]))
+
+            gl_evals_path = os.path.join(self.data_root, 'graph/graphs_evals')
+            self.gl_evals_file = sorted(
+                [os.path.join(gl_evals_path, f) for f in os.listdir(gl_evals_path) if f.endswith('.npy')],
+                key=lambda x: int(Path(x).stem.split('_')[-1]))
 
         # check the data path contains .vts files
         if self.return_corr:
@@ -109,6 +133,8 @@ class SingleShapeDataset(Dataset):
             dist_path = os.path.join(self.data_root, 'dist')
             assert os.path.isdir(dist_path), f'Invalid path {dist_path} not containing .mat files'
             self.dist_files = sort_list(glob(f'{dist_path}/*.mat'))
+        self.index_path = os.path.join(self.data_root, 'graph/indices/indices.pt')
+        self.index = torch.load(self.index_path)
 
     def __getitem__(self, index):
         item = dict()
@@ -120,7 +146,8 @@ class SingleShapeDataset(Dataset):
 
         # get vertices and faces
         # verts, faces = read_shape(off_file)
-        verts, faces = pp3d.read_mesh(off_file)
+        verts, _ = pp3d.read_mesh(off_file)
+        verts = verts[self.index]
         item['verts'] = torch.from_numpy(np.ascontiguousarray(verts)).float()
         if self.return_faces:
             item['faces'] = torch.from_numpy(np.ascontiguousarray(faces)).long()
@@ -129,9 +156,17 @@ class SingleShapeDataset(Dataset):
         if self.return_evecs:
             item = get_spectral_ops(item, num_evecs=self.num_evecs, cache_dir=os.path.join(self.data_root, 'diffusion'))
 
-        if self.return_dino:
-            feature = np.load(self.dino_feature_file[index])
+        # if self.return_dino:
+        #     feature = np.load(self.dino_feature_file[index])
+        #     evals = np.load(self.dino_evals_file[index])
+        #     item['dino_feat'] = torch.from_numpy(feature).float()
+        #     item['dino_eval'] = torch.from_numpy(evals).float()
+
+        if self.return_gl:  # 这里为了省事，沿用了dino的变量名字
+            feature = np.load(self.gl_feature_file[index])
+            evals = np.load(self.gl_evals_file[index])
             item['dino_feat'] = torch.from_numpy(feature).float()
+            item['dino_eval'] = torch.from_numpy(evals).float()
 
         # get geodesic distance matrix
         if self.return_dist:
@@ -171,6 +206,10 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.dist_files = self.dist_files[:80]
             if self.dino_feature_file:
                 self.dino_feature_file = self.dino_feature_file[:80]
+                self.dino_evals_file = self.dino_evals_file[:80]
+            if self.gl_feature_file:
+                self.gl_feature_file = self.gl_feature_file[:80]
+                self.gl_evals_file = self.gl_evals_file[:80]
             self._size = 80
         elif phase == 'test':
             if self.off_files:
@@ -181,6 +220,10 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.dist_files = self.dist_files[80:]
             if self.dino_feature_file:
                 self.dino_feature_file = self.dino_feature_file[80:]
+                self.dino_evals_file = self.dino_evals_file[80:]
+            if self.gl_feature_file:
+                self.gl_feature_file = self.gl_feature_file[80:]
+                self.gl_evals_file = self.gl_evals_file[80:]
             self._size = 20
 
 

@@ -10,7 +10,6 @@ import torch
 from utils.geometry_util import laplacian_decomposition, get_operators
 from utils.shape_util import read_shape, compute_geodesic_distmat, write_off
 
-
 if __name__ == '__main__':
     # parse arguments
     parser = ArgumentParser('Preprocess .off files')
@@ -31,19 +30,24 @@ if __name__ == '__main__':
     assert os.path.isdir(data_root), f'Invalid data root: {data_root}'
 
     if not no_eig:
-        spectral_dir = os.path.join(data_root, 'diffusion')
+        spectral_dir = os.path.join(data_root, 'diffusion_pcd')
         os.makedirs(spectral_dir, exist_ok=True)
 
     if not no_dist:
-        dist_dir = os.path.join(data_root, 'dist')
+        dist_dir = os.path.join(data_root, 'dist_pcd')
         os.makedirs(dist_dir, exist_ok=True)
 
     # read .off files
     off_files = sorted(glob(os.path.join(data_root, 'off', '*.ply')))
+
+    indices = torch.load(os.path.join(data_root, 'graph/indices/indices.pt'))
+
     assert len(off_files) != 0
 
     for off_file in tqdm(off_files):
         verts, faces = read_shape(off_file)
+        sampled_verts = verts[indices]
+        print('sample_verts', sampled_verts.shape)
         filename = os.path.basename(off_file)
 
         if not no_normalize:
@@ -60,11 +64,14 @@ if __name__ == '__main__':
 
         if not no_eig:
             # recompute laplacian decomposition
-            get_operators(torch.from_numpy(verts).float(), torch.from_numpy(faces).long(),
+            # get_operators(torch.from_numpy(verts).float(), torch.from_numpy(faces).long(),
+            #               k=n_eig, cache_dir=spectral_dir)
+            get_operators(torch.from_numpy(sampled_verts).float(), None,
                           k=n_eig, cache_dir=spectral_dir)
 
         if not no_dist:
             # compute distance matrix
             dist_mat = compute_geodesic_distmat(verts, faces)
+            dist_mat = dist_mat[indices, :][:, indices]
             # save results
             sio.savemat(os.path.join(dist_dir, filename.replace('.ply', '.mat')), {'dist': dist_mat})

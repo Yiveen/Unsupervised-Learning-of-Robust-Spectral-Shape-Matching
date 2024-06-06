@@ -20,7 +20,7 @@ datasets:
     data_root: /home/yiwen/TUM/Unsupervised-Learning-of-Robust-Spectral-Shape-Matching/data/FAUST
     return_evecs: True
     return_faces: True
-    num_evecs: 200
+    num_evecs: 100
     return_corr: False
     return_dist: False
   test_dataset:
@@ -30,7 +30,7 @@ datasets:
     data_root: /home/yiwen/TUM/Unsupervised-Learning-of-Robust-Spectral-Shape-Matching/data/FAUST
     return_evecs: True
     return_faces: True
-    num_evecs: 200
+    num_evecs: 100
     return_corr: False
     return_dist: True
   # setting for train dataset
@@ -76,7 +76,7 @@ train:
 
 # validation setting
 val:
-  val_freq: 4000
+  val_freq: 10
   metrics:
     geo_error:
       type: calculate_geodesic_error

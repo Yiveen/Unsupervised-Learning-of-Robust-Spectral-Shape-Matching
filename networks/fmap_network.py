@@ -32,6 +32,7 @@ class RegularizedFMNet(nn.Module):
         self.bidirectional = bidirectional
 
     def compute_functional_map(self, feat_x, feat_y, evals_x, evals_y, evecs_trans_x, evecs_trans_y):
+        # print('!!!', evals_x.shape)
         A = torch.bmm(evecs_trans_x, feat_x)  # [B, K, C] [1,200,256]
         B = torch.bmm(evecs_trans_y, feat_y)  # [B, K, C]
 
