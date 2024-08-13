@@ -35,42 +35,82 @@ class FMNetModel(BaseModel):
         evecs_trans_x = data_x['evecs_trans']  # [B, K, Nx]
         evecs_trans_y = data_y['evecs_trans']  # [B, K, Ny]
 
-        # Assuming temp is your tensor sliced from data_x['dino_feat'][:, :, :10]
-        dino_basis_x = data_x['dino_feat']
-        dino_basis_x = torch.flip(dino_basis_x, dims=[2])  # Reversing along the third dimension
-        dino_basis_y = data_y['dino_feat']
-        dino_basis_y = torch.flip(dino_basis_y, dims=[2])  # Reversing along the third dimension
+        # # Assuming temp is your tensor sliced from data_x['dino_feat'][:, :, :10]
+        # dino_basis_x = data_x['dino_feat'][:,:,:10]
+        # dino_basis_x = torch.flip(dino_basis_x, dims=[2])  # Reversing along the third dimension
+        # dino_basis_y = data_y['dino_feat'][:,:,:10]
+        # dino_basis_y = torch.flip(dino_basis_y, dims=[2])  # Reversing along the third dimension
 
-        dino_evals_x = data_x['dino_eval']
-        dino_evals_x = torch.flip(dino_evals_x, dims=[1])
+        # dino_evals_x = data_x['dino_eval']
+        # dino_evals_x = torch.flip(dino_evals_x, dims=[1])
+        # # print('dino_evals', dino_evals_x)
+        # # print('evecs_x',evals_x)
+        # # print('evecs_x_shape',evals_x.shape)
+        # dino_evals_y = data_y['dino_eval']
+        # dino_evals_y = torch.flip(dino_evals_y, dims=[1])
+        # # print('dino_evals_y', dino_evals_y.shape)
+        
+        
+        gl_basis_x = data_x['gl_feat']
+        gl_basis_x = torch.flip(gl_basis_x, dims=[2])  # Reversing along the third dimension
+        gl_basis_y = data_y['gl_feat']
+        gl_basis_y = torch.flip(gl_basis_y, dims=[2])  # Reversing along the third dimension
+
+        gl_evals_x = data_x['gl_eval']
+        gl_evals_x = torch.flip(gl_evals_x, dims=[1])
         # print('dino_evals', dino_evals_x)
         # print('evecs_x',evals_x)
         # print('evecs_x_shape',evals_x.shape)
-        dino_evals_y = data_y['dino_eval']
-        dino_evals_y = torch.flip(dino_evals_y, dims=[1])
+        gl_evals_y = data_y['gl_eval']
+        gl_evals_y = torch.flip(gl_evals_y, dims=[1])
         # print('dino_evals_y', dino_evals_y.shape)
 
-        dino_trans_x = dino_basis_x.transpose(2, 1)
-        dino_trans_y = dino_basis_y.transpose(2, 1)
+        gl_trans_x = gl_basis_x.transpose(2, 1)
+        gl_trans_y = gl_basis_y.transpose(2, 1)
+        
+        # combined_basis_x = torch.concatenate((gl_basis_x, dino_basis_x), dim=2)
+        # combined_basis_y = torch.concatenate((gl_basis_y, dino_basis_y), dim=2)
+        # # print(combined_basis_x.shape)
+        
+        # combined_trans_x = combined_basis_x.transpose(2, 1)
+        # combined_trans_y = combined_basis_y.transpose(2, 1)
+        # # print(combined_trans_x.shape)
+        
+        # combined_eval_x = torch.cat((gl_evals_x, gl_evals_x[:, -1].unsqueeze(1).expand(-1, 10)), dim=1) 
+        # combined_eval_y = torch.cat((gl_evals_y, gl_evals_y[:, -1].unsqueeze(1).expand(-1, 10)), dim=1) 
+        # print(combined_eval_x.shape)
 
-        Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, evals_x, evals_y, evecs_trans_x, evecs_trans_y)
+        # Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, evals_x, evals_y, evecs_trans_x, evecs_trans_y)
         # Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, dino_evals_x, dino_evals_y, dino_trans_x, dino_trans_y)
+        Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, gl_evals_x, gl_evals_y, gl_trans_x, gl_trans_y)
+        # Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, combined_eval_x, combined_eval_y, combined_trans_x, combined_trans_y)
 
-        self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, evals_x, evals_y)
+
+        # self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, evals_x, evals_y)
         # self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, dino_evals_x, dino_evals_y)
+        self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, gl_evals_x, gl_evals_y)
+        # self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, gl_evals_x, gl_evals_y)
+
+
         Pxy, Pyx = self.compute_permutation_matrix(feat_x, feat_y, bidirectional=True)
 
         # compute C
-        Cxy_est = torch.bmm(evecs_trans_y, torch.bmm(Pyx, evecs_x))
+        # Cxy_est = torch.bmm(evecs_trans_y, torch.bmm(Pyx, evecs_x))
         # Cxy_est = torch.bmm(dino_trans_y, torch.bmm(Pyx, dino_basis_x))
+        Cxy_est = torch.bmm(gl_trans_y, torch.bmm(Pyx, gl_basis_x))
+        # Cxy_est = torch.bmm(combined_trans_y, torch.bmm(Pyx, combined_basis_x))
+
 
         # print('Cxy',Cxy.shape)
         # print('Cxy_est',Cxy_est.shape)
 
         self.loss_metrics['l_align'] = self.losses['align_loss'](Cxy, Cxy_est)
         if not self.partial:
-            Cyx_est = torch.bmm(evecs_trans_x, torch.bmm(Pxy, evecs_y))
+            # Cyx_est = torch.bmm(evecs_trans_x, torch.bmm(Pxy, evecs_y))
             # Cyx_est = torch.bmm(dino_trans_x, torch.bmm(Pyx, dino_basis_y))
+            Cyx_est = torch.bmm(gl_trans_x, torch.bmm(Pyx, gl_basis_y))
+            # Cyx_est = torch.bmm(combined_trans_x, torch.bmm(Pyx, combined_basis_y))
+
             self.loss_metrics['l_align'] += self.losses['align_loss'](Cyx, Cyx_est)
 
         if 'dirichlet_loss' in self.losses:
@@ -104,10 +144,10 @@ class FMNetModel(BaseModel):
         evecs_trans_x = data_x['evecs_trans'].squeeze()
         evecs_trans_y = data_y['evecs_trans'].squeeze()
 
-        dino_basis_x = data_x['dino_feat'].squeeze()
-        dino_basis_y = data_y['dino_feat'].squeeze()
-        dino_trans_x = dino_basis_x.transpose(1, 0)
-        dino_trans_y = dino_basis_y.transpose(1, 0)
+        # dino_basis_x = data_x['dino_feat'].squeeze()
+        # dino_basis_y = data_y['dino_feat'].squeeze()
+        # dino_trans_x = dino_basis_x.transpose(1, 0)
+        # dino_trans_y = dino_basis_y.transpose(1, 0)
 
         # if self.non_isometric:
         if True:

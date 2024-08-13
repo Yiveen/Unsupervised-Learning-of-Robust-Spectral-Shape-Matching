@@ -111,13 +111,13 @@ class SingleShapeDataset(Dataset):
                 key=lambda x: int(Path(x).stem.split('_')[-1]))
 
         if self.return_gl:
-            gl_feature_path = os.path.join(self.data_root, 'graph/graphs_evecs')
+            gl_feature_path = os.path.join(self.data_root, 'graph/full_mesh_only_dino_diffusion_graphs_evecs')
             assert os.path.isdir(gl_feature_path), f'Invalid path {gl_feature_path} not containing .npy files'
             self.gl_feature_file = sorted(
                 [os.path.join(gl_feature_path, f) for f in os.listdir(gl_feature_path) if f.endswith('.npy')],
                 key=lambda x: int(Path(x).stem.split('_')[-1]))
 
-            gl_evals_path = os.path.join(self.data_root, 'graph/graphs_evals')
+            gl_evals_path = os.path.join(self.data_root, 'graph/full_mesh_only_dino_diffusion_graphs_evals')
             self.gl_evals_file = sorted(
                 [os.path.join(gl_evals_path, f) for f in os.listdir(gl_evals_path) if f.endswith('.npy')],
                 key=lambda x: int(Path(x).stem.split('_')[-1]))
@@ -130,13 +130,13 @@ class SingleShapeDataset(Dataset):
 
         # check the data path contains .mat files
         if self.return_dist:
-            dist_path = os.path.join(self.data_root, 'dist')
+            dist_path = os.path.join(self.data_root, 'dist') #change here!!!!
             assert os.path.isdir(dist_path), f'Invalid path {dist_path} not containing .mat files'
             self.dist_files = sort_list(glob(f'{dist_path}/*.mat'))
         self.index_path = os.path.join(self.data_root, 'graph/indices/indices.pt')
         self.index = torch.load(self.index_path)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index, sampled=False):
         item = dict()
 
         # get shape name
@@ -145,9 +145,10 @@ class SingleShapeDataset(Dataset):
         item['name'] = basename
 
         # get vertices and faces
-        # verts, faces = read_shape(off_file)
-        verts, _ = pp3d.read_mesh(off_file)
-        verts = verts[self.index]
+        verts, faces = read_shape(off_file)
+        # verts, _ = pp3d.read_mesh(off_file)
+        if sampled:
+            verts = verts[self.index]
         item['verts'] = torch.from_numpy(np.ascontiguousarray(verts)).float()
         if self.return_faces:
             item['faces'] = torch.from_numpy(np.ascontiguousarray(faces)).long()
@@ -156,22 +157,23 @@ class SingleShapeDataset(Dataset):
         if self.return_evecs:
             item = get_spectral_ops(item, num_evecs=self.num_evecs, cache_dir=os.path.join(self.data_root, 'diffusion'))
 
-        # if self.return_dino:
-        #     feature = np.load(self.dino_feature_file[index])
-        #     evals = np.load(self.dino_evals_file[index])
-        #     item['dino_feat'] = torch.from_numpy(feature).float()
-        #     item['dino_eval'] = torch.from_numpy(evals).float()
+        if self.return_dino:
+            feature = np.load(self.dino_feature_file[index])
+            evals = np.load(self.dino_evals_file[index])
+            item['dino_feat'] = torch.from_numpy(feature[self.index]).float()
+            item['dino_eval'] = torch.from_numpy(evals).float()
 
         if self.return_gl:  # 这里为了省事，沿用了dino的变量名字
             feature = np.load(self.gl_feature_file[index])
             evals = np.load(self.gl_evals_file[index])
-            item['dino_feat'] = torch.from_numpy(feature).float()
-            item['dino_eval'] = torch.from_numpy(evals).float()
+            item['gl_feat'] = torch.from_numpy(feature).float()
+            item['gl_eval'] = torch.from_numpy(evals).float()
 
         # get geodesic distance matrix
         if self.return_dist:
             mat = sio.loadmat(self.dist_files[index])
             item['dist'] = torch.from_numpy(mat['dist']).float()
+            # print(item['dist'].shape)
 
         # get correspondences
         if self.return_corr:

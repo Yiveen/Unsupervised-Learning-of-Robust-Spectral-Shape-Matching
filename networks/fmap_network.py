@@ -41,10 +41,15 @@ class RegularizedFMNet(nn.Module):
         A_t = A.transpose(1, 2)  # [B, C, K] [1,256,200]
         A_A_t = torch.bmm(A, A_t)  # [B, K, K]
         B_A_t = torch.bmm(B, A_t)  # [B, K, K]
+        
+        # print(B_A_t.shape)
+        # print('d',D.shape)
 
         C_i = []
         for i in range(evals_x.shape[1]):
             D_i = torch.cat([torch.diag(D[bs, i, :].flatten()).unsqueeze(0) for bs in range(evals_x.shape[0])], dim=0) # [1, 200, 200]
+            
+            # print(D_i.shape)
             C = torch.bmm(torch.inverse(A_A_t + self.lmbda * D_i), B_A_t[:, [i], :].transpose(1, 2)) #[1,200,1]
             C_i.append(C.transpose(1, 2))
 

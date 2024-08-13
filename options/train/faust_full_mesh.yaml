@@ -1,5 +1,5 @@
 # general setting
-name: faust-PCA-DINO-SD-40Epoch-Lcouple
+name: faust-diff3f-dino-35Epoch-Lcouple
 backend: dp # DataParallel
 type: FMNetModel
 num_gpu: auto
@@ -19,17 +19,17 @@ datasets:
     phase: train
     data_root: /home/yliu/projects/Unsupervised-Learning-of-Robust-Spectral-Shape-Matching/data/FAUST
     return_evecs: True
-    return_faces: False
+    return_faces: True
     num_evecs: 200
     return_corr: False
-    return_dist: False
+    return_dist: True
   test_dataset:
     name: FaustTest
     type: PairFaustDataset
     phase: test
     data_root: /home/yliu/projects/Unsupervised-Learning-of-Robust-Spectral-Shape-Matching/data/FAUST
     return_evecs: True
-    return_faces: False
+    return_faces: True
     num_evecs: 200
     return_corr: False
     return_dist: True
@@ -43,7 +43,7 @@ networks:
     type: DiffusionNet
     in_channels: 128
     out_channels: 256
-    cache_dir: /home/yliu/projects/Unsupervised-Learning-of-Robust-Spectral-Shape-Matching/data/FAUST/diffusion_pcd
+    cache_dir: /home/yliu/projects/Unsupervised-Learning-of-Robust-Spectral-Shape-Matching/data/FAUST/diffusion
     input_type: wks
   fmap_net:
     type: RegularizedFMNet
@@ -54,7 +54,7 @@ networks:
 
 # training setting
 train:
-  total_epochs: 40
+  total_epochs: 15
   optims:
     feature_extractor:
       type: Adam
@@ -63,7 +63,7 @@ train:
     feature_extractor:
       type: CosineAnnealingLR
       eta_min: 1.0e-4
-      T_max: 40
+      T_max: 15
   losses:
     surfmnet_loss:
       type: SURFMNetLoss
